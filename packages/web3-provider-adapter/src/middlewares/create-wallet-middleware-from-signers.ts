@@ -17,6 +17,11 @@ import { assertKnownAddress } from "../parameters/assert-known-address.js";
 import { getAccounts } from "../get-accounts.js";
 import { lookupSigner } from "../lookup-signer.js";
 import { getGas } from "../ethereum-json-rpc/get-gas.js";
+import {
+  SignTypedDataVersion,
+  TypedDataUtils,
+  TypedMessage,
+} from "@metamask/eth-sig-util";
 
 export function createWalletMiddlewareFromSigners(
   signers: Signer[],
@@ -25,6 +30,23 @@ export function createWalletMiddlewareFromSigners(
   return createWalletMiddleware({
     getAccounts: () => {
       return getAccounts(signers);
+    },
+
+    processTypedMessageV4: async (msgParams) => {
+      const { from, data } = msgParams;
+      const signer = await lookupSigner(from, signers);
+      if (!signer) {
+        throw new Error(
+          `createWalletMiddlewareFromSigners: from is unknown address. actual: ${from}`
+        );
+      }
+      const typed = JSON.parse(data) as TypedMessage<any>;
+      const messagehash = TypedDataUtils.eip712Hash(
+        typed,
+        SignTypedDataVersion.V4
+      );
+      const sig = await signer.sign(Bytes.fromArrayBuffer(messagehash));
+      return sig.bytes.toString();
     },
 
     processTransaction: async (txParams) => {
